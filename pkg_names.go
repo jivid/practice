@@ -12,6 +12,25 @@ import (
     "strings"
 )
 
+func print_pkg(name string) {
+    var pkg_line string
+    contents,_ := ioutil.ReadFile(name)
+    lines := strings.Split(string(contents), "\n")
+    for _,l := range lines {
+        if(strings.HasPrefix(l, "package")) {
+            pkg_line = l
+            break
+        }
+    }
+    if (len(pkg_line) == 0) {
+        return
+    } else {
+        pkg_name := strings.Split(pkg_line, " ")[1]
+        fmt.Printf("%s: %s\n", name, pkg_name)
+    }
+    return
+}
+
 func main() {
     flag.Parse()
     path := flag.Arg(0)
@@ -26,12 +45,7 @@ func main() {
             strings.HasSuffix(fi.Name(), ".go")) {
             f,_ := os.Open(fi.Name())
             defer f.Close()
-            contents, _ := ioutil.ReadFile(fi.Name())
-            first_line := strings.Split(string(contents), "\n")[0]
-            if (strings.HasPrefix(first_line, "package")) {
-                pkg_name := strings.Split(first_line, " ")[1]
-                fmt.Printf("%s: %s\n" , fi.Name(), pkg_name)
-            }
+            print_pkg(fi.Name())
         }
     }
 }
