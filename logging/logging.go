@@ -38,17 +38,7 @@ func CreateLogger (name string, level int) (*log.Logger) {
 
     // MkdirAll will not do anything if the directory already exists
     os.MkdirAll(log_path, 0755)
-    exists, err := CheckFileExists(log_file)
 
-    if (err != nil) {
-        return nil
-    }
-
-    // Create file so we can open it
-    if (!exists) {
-        os.Create(log_file)
-    }
-
-    f, _ := os.OpenFile(log_file, os.O_RDWR|os.O_APPEND, 0660)
+    f, _ := os.OpenFile(log_file, os.O_RDWR|os.O_APPEND|os.O_CREATE, 0666)
     return log.New(f, "", level)
 }
