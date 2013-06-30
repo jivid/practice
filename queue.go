@@ -82,9 +82,6 @@ func main() {
         q.PushMessage("Sport")
         fmt.Println("Second", q.messages)
     }()
-    fmt.Println(q.messages)
-    fmt.Println(q.used)
-    fmt.Println(len(q.sem))
-    fmt.Println(q.messages)
+    fmt.Println(q.messages, q.used, len(q.sem))
     time.Sleep(5000*time.Millisecond)
 }
