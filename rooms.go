@@ -18,11 +18,11 @@ type Room struct {
 func (r Room) ShowContents() {
     fmt.Printf("Name: %s\n", r.name)
     fmt.Printf("\tCapacity: %d\n", r.capacity)
-    fmt.Printf("\tItems:")
+    fmt.Printf("\tItems: [")
     for _,v := range r.items {
-        fmt.Printf(" %s,", v.name)
+        fmt.Printf(" %s ", v.name)
     }
-    fmt.Printf("\n");
+    fmt.Printf("]\n");
 }
 
 var (
