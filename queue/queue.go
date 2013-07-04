@@ -8,11 +8,10 @@
     in the queue to pop. PushMessage() writes a value to the
     semaphore when a new message is added to the queue.
 */
-package main
+package queue
 
 import (
     "fmt"
-    "time"
 )
 
 type Message struct {
@@ -65,6 +64,7 @@ func (q *MessageQueue) PushMessage(msg string) bool {
     return true
 }
 
+/* 
 func main() {
     q := CreateMQueue(2)
     q.PushMessage("Msg 1")
@@ -88,3 +88,4 @@ func main() {
     fmt.Println(q.messages)
     time.Sleep(5000*time.Millisecond)
 }
+*/
