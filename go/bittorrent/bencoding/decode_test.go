@@ -73,3 +73,23 @@ func TestInt(t *testing.T) {
 	})
 }
 
+func TestDict(t *testing.T) {
+	t.Run("Empty dict", func(t *testing.T) {
+		ret, err := Decode(newReader(t, "de"))
+		assert.Nil(t, err)
+		assert.Empty(t, ret)
+	})
+
+	t.Run("Dict with nested elements", func(t *testing.T) {
+		ret, err := Decode(newReader(t, "d4:repo8:practice4:yeari2023e8:elementsl3:foo3:bare5:otherd3:bar3:bazee"))
+		assert.Nil(t, err)
+		if dict, ok := ret.(map[string]BencodedElement); ok {
+			assert.Equal(t, "practice", dict["repo"])
+			assert.Equal(t, 2023, dict["year"])
+			assert.Equal(t, []BencodedElement{"foo", "bar"}, dict["elements"])
+			assert.Equal(t, map[string]BencodedElement{"bar": "baz"}, dict["other"])
+		} else {
+			t.Fatalf("Got return that is not a map: %v", ret)
+		}
+	})
+}
