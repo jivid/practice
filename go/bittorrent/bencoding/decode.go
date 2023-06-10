@@ -36,16 +36,16 @@ func (d *Decoder) Decode() (BencodedElement, error) {
 
 	switch {
 	case '0' <= hint[0] && hint[0] <= '9':
-		ret, err := d.DecodeString()
+		ret, err := d.decodeString()
 		return d.checkStreamComplete(ret, err)
 	case hint[0] == 'i':
-		ret, err := d.DecodeInt()
+		ret, err := d.decodeInt()
 		return d.checkStreamComplete(ret, err)
 	case hint[0] == 'l':
-		ret, err := d.DecodeList()
+		ret, err := d.decodeList()
 		return d.checkStreamComplete(ret, err)
 	case hint[0] == 'd':
-		ret, err := d.DecodeDict()
+		ret, err := d.decodeDict()
 		return d.checkStreamComplete(ret, err)
 	default:
 		return nil, errors.New(fmt.Sprintf("Invalid hint rune: %d", hint))
@@ -63,14 +63,14 @@ func (d *Decoder) checkStreamComplete(e BencodedElement, err error) (BencodedEle
 	if err != nil {
 		return nil, err
 	}
-	if d.IsStreamComplete() {
+	if d.isStreamComplete() {
 		return e, nil
 	} else {
 		return nil, StreamNotCompleteError(d.pos)
 	}
 }
 
-func (d *Decoder) IsStreamComplete() bool {
+func (d *Decoder) isStreamComplete() bool {
 	if _, err := d.r.Peek(1); err == io.EOF {
 		return true
 	}
@@ -78,7 +78,7 @@ func (d *Decoder) IsStreamComplete() bool {
 	return false
 }
 
-func (d *Decoder) DecodeString() (string, error) {
+func (d *Decoder) decodeString() (string, error) {
 	length, err := d.r.ReadString(':')
 	d.pos += len(length)
 
@@ -106,7 +106,7 @@ func (d *Decoder) DecodeString() (string, error) {
 
 // Assumes the leading 'i' hint has _not_ been read from the buffer yet
 // Returns 0 as the integer value if an error was encountered
-func (d *Decoder) DecodeInt() (int, error) {
+func (d *Decoder) decodeInt() (int, error) {
 	// Drop the 'i' delimiter
 	_, err := d.readByte()
 
@@ -139,7 +139,7 @@ func (d *Decoder) DecodeInt() (int, error) {
 	return parsedInt, nil
 }
 
-func (d *Decoder) DecodeList() ([]BencodedElement, error) {
+func (d *Decoder) decodeList() ([]BencodedElement, error) {
 	// Drop the leading 'l'
 	_, err := d.readByte()
 	if err != nil {
@@ -163,25 +163,25 @@ func (d *Decoder) DecodeList() ([]BencodedElement, error) {
 			}
 			return buf, nil
 		case '0' <= hint[0] && hint[0] <= '9':
-			ret, err := d.DecodeString()
+			ret, err := d.decodeString()
 			if err != nil {
 				return nil, err
 			}
 			buf = append(buf, ret)
 		case hint[0] == 'i':
-			ret, err := d.DecodeInt()
+			ret, err := d.decodeInt()
 			if err != nil {
 				return nil, err
 			}
 			buf = append(buf, ret)
 		case hint[0] == 'l':
-			ret, err := d.DecodeList()
+			ret, err := d.decodeList()
 			if err != nil {
 				return nil, err
 			}
 			buf = append(buf, ret)
 		case hint[0] == 'd':
-			ret, err := d.DecodeDict()
+			ret, err := d.decodeDict()
 			if err != nil {
 				return nil, err
 			}
@@ -193,7 +193,7 @@ func (d *Decoder) DecodeList() ([]BencodedElement, error) {
 	return buf, nil
 }
 
-func (d *Decoder) DecodeDict() (map[string]BencodedElement, error) {
+func (d *Decoder) decodeDict() (map[string]BencodedElement, error) {
 	// Drop the leading 'd'
 	_, err := d.readByte()
 	if err != nil {
@@ -216,7 +216,7 @@ func (d *Decoder) DecodeDict() (map[string]BencodedElement, error) {
 			return buf, nil
 		}
 
-		key, err := d.DecodeString()
+		key, err := d.decodeString()
 		if err != nil {
 			return nil, err
 		}
@@ -230,25 +230,25 @@ func (d *Decoder) DecodeDict() (map[string]BencodedElement, error) {
 		case hint[0] == 'e':
 			return nil, errors.New("Invalid end character when looking for dict value")
 		case '0' <= hint[0] && hint[0] <= '9':
-			value, err := d.DecodeString()
+			value, err := d.decodeString()
 			if err != nil {
 				return nil, err
 			}
 			buf[key] = value
 		case hint[0] == 'i':
-			value, err := d.DecodeInt()
+			value, err := d.decodeInt()
 			if err != nil {
 				return nil, err
 			}
 			buf[key] = value
 		case hint[0] == 'l':
-			value, err := d.DecodeList()
+			value, err := d.decodeList()
 			if err != nil {
 				return nil, err
 			}
 			buf[key] = value
 		case hint[0] == 'd':
-			value, err := d.DecodeDict()
+			value, err := d.decodeDict()
 			if err != nil {
 				return nil, err
 			}
