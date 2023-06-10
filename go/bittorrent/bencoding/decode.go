@@ -2,65 +2,85 @@ package bencoding
 
 import (
 	"bufio"
-	"io"
-	// "bytes"
+	"bytes"
 	"errors"
 	"fmt"
+	"io"
 	"strconv"
 )
 
 type BencodedElement interface{}
 
-// TODO: Enhance with positions in the stream
-var LeadingZeroIntegerError = errors.New("Integers encoded with leading 0 are invalid")
-var TooFewStringBytesError = errors.New("Didn't receive expected number of string bytes")
-var StreamNotCompleteError = errors.New("Stream isn't complete after decoding complete element")
+type Decoder struct {
+	r   *bufio.Reader
+	pos int
+}
 
-func Decode(r *bufio.Reader) (BencodedElement, error) {
-	hint, err := r.Peek(1)
+var LeadingZeroIntegerError = func(pos int) error { return fmt.Errorf("Pos: %d. Integers encoded with leading 0 are invalid", pos) }
+var TooFewStringBytesError = func(pos int) error { return fmt.Errorf("Pos: %d. Didn't receive expected number of string bytes", pos) }
+var StreamNotCompleteError = func(pos int) error {
+	return fmt.Errorf("Pos: %d. Stream isn't complete after decoding complete element", pos)
+}
+
+func Decode(b []byte) (BencodedElement, error) {
+	r := bufio.NewReader(bytes.NewReader(b))
+	d := Decoder{r, 0}
+	return d.Decode()
+}
+
+func (d *Decoder) Decode() (BencodedElement, error) {
+	hint, err := d.r.Peek(1)
 	if err != nil {
 		return nil, err
 	}
 
 	switch {
 	case '0' <= hint[0] && hint[0] <= '9':
-		ret, err := DecodeString(r)
-		return CheckStreamComplete(r, ret, err)
+		ret, err := d.DecodeString()
+		return d.checkStreamComplete(ret, err)
 	case hint[0] == 'i':
-		ret, err := DecodeInt(r)
-		return CheckStreamComplete(r, ret, err)
+		ret, err := d.DecodeInt()
+		return d.checkStreamComplete(ret, err)
 	case hint[0] == 'l':
-		ret, err := DecodeList(r)
-		return CheckStreamComplete(r, ret, err)
+		ret, err := d.DecodeList()
+		return d.checkStreamComplete(ret, err)
 	case hint[0] == 'd':
-		ret, err := DecodeDict(r)
-		return CheckStreamComplete(r, ret, err)
+		ret, err := d.DecodeDict()
+		return d.checkStreamComplete(ret, err)
 	default:
 		return nil, errors.New(fmt.Sprintf("Invalid hint rune: %d", hint))
 	}
+
 }
 
-func CheckStreamComplete(r *bufio.Reader, e BencodedElement, err error) (BencodedElement, error) {
+func (d *Decoder) readByte() (byte, error) {
+	b, err := d.r.ReadByte()
+	d.pos += 1
+	return b, err
+}
+
+func (d *Decoder) checkStreamComplete(e BencodedElement, err error) (BencodedElement, error) {
 	if err != nil {
 		return nil, err
 	}
-	if IsStreamComplete(r) {
+	if d.IsStreamComplete() {
 		return e, nil
 	} else {
-		return nil, StreamNotCompleteError
+		return nil, StreamNotCompleteError(d.pos)
 	}
 }
 
-func IsStreamComplete(r *bufio.Reader) bool {
-	if _, err := r.Peek(1); err == io.EOF {
+func (d *Decoder) IsStreamComplete() bool {
+	if _, err := d.r.Peek(1); err == io.EOF {
 		return true
 	}
 
 	return false
 }
 
-func DecodeString(r *bufio.Reader) (string, error) {
-	length, err := r.ReadString(':')
+func (d *Decoder) DecodeString() (string, error) {
+	length, err := d.r.ReadString(':')
+	d.pos += len(length)
 
 	if err != nil {
 		return "", err
@@ -72,12 +92,13 @@ func DecodeString(r *bufio.Reader) (string, error) {
 		return "", err
 	}
 	buf := make([]byte, numBytes)
-	numRead, err := r.Read(buf)
+	numRead, err := d.r.Read(buf)
+	d.pos += numRead
 	if err != nil {
 		return "", err
 	}
 	if numRead < numBytes {
-		return "", TooFewStringBytesError
+		return "", TooFewStringBytesError(d.pos)
 	}
 
 	return string(buf), nil
@@ -85,15 +106,17 @@ func DecodeString(r *bufio.Reader) (string, error) {
 
 // Assumes the leading 'i' hint has _not_ been read from the buffer yet
 // Returns 0 as the integer value if an error was encountered
-func DecodeInt(r *bufio.Reader) (int, error) {
+func (d *Decoder) DecodeInt() (int, error) {
 	// Drop the 'i' delimiter
-	_, err := r.ReadByte()
+	_, err := d.readByte()
+
 	if err != nil {
 		return 0, err
 	}
 
 	// Read everything until the trailing 'e' delimiter
-	data, err := r.ReadString('e')
+	data, err := d.r.ReadString('e')
+	d.pos += len(data)
 	if err != nil {
 		return 0, err
 	}
@@ -101,10 +124,13 @@ func DecodeInt(r *bufio.Reader) (int, error) {
 	// Special case: any data with a leading 0 is invalid, except if
 	// it signifies the integer 0
 	if data[0] == '0' && data != "0e" {
-		return 0, LeadingZeroIntegerError
+		// We want the position in the error to be the position
+		// of the 0. d.pos is current position of the reader, so
+		// we need to backtrack to the zero position
+		return 0, LeadingZeroIntegerError(d.pos - len(data) + 1)
 	}
 
-	// data will contain a trailing colon. Strip it here
+	// data will contain the trailing 'e'. Drop it here
 	parsedInt, err := strconv.Atoi(data[:len(data)-1])
 	if err != nil {
 		return 0, err
@@ -113,9 +139,9 @@ func DecodeInt(r *bufio.Reader) (int, error) {
 	return parsedInt, nil
 }
 
-func DecodeList(r *bufio.Reader) ([]BencodedElement, error) {
+func (d *Decoder) DecodeList() ([]BencodedElement, error) {
 	// Drop the leading 'l'
-	_, err := r.ReadByte()
+	_, err := d.readByte()
 	if err != nil {
 		return nil, err
 	}
@@ -123,7 +149,7 @@ func DecodeList(r *bufio.Reader) ([]BencodedElement, error) {
 	buf := []BencodedElement{}
 
 	for {
-		hint, err := r.Peek(1)
+		hint, err := d.r.Peek(1)
 		if err != nil {
 			return nil, err
 		}
@@ -131,31 +157,31 @@ func DecodeList(r *bufio.Reader) ([]BencodedElement, error) {
 		switch {
 		case hint[0] == 'e':
 			// Drop the trailing 'e' before yielding the stream
-			_, err := r.ReadByte()
+			_, err := d.readByte()
 			if err != nil {
 				return nil, err
 			}
 			return buf, nil
 		case '0' <= hint[0] && hint[0] <= '9':
-			ret, err := DecodeString(r)
+			ret, err := d.DecodeString()
 			if err != nil {
 				return nil, err
 			}
 			buf = append(buf, ret)
 		case hint[0] == 'i':
-			ret, err := DecodeInt(r)
+			ret, err := d.DecodeInt()
 			if err != nil {
 				return nil, err
 			}
 			buf = append(buf, ret)
 		case hint[0] == 'l':
-			ret, err := DecodeList(r)
+			ret, err := d.DecodeList()
 			if err != nil {
 				return nil, err
 			}
 			buf = append(buf, ret)
 		case hint[0] == 'd':
-			ret, err := DecodeDict(r)
+			ret, err := d.DecodeDict()
 			if err != nil {
 				return nil, err
 			}
@@ -167,9 +193,9 @@ func DecodeList(r *bufio.Reader) ([]BencodedElement, error) {
 	return buf, nil
 }
 
-func DecodeDict(r *bufio.Reader) (map[string]BencodedElement, error) {
+func (d *Decoder) DecodeDict() (map[string]BencodedElement, error) {
 	// Drop the leading 'd'
-	_, err := r.ReadByte()
+	_, err := d.readByte()
 	if err != nil {
 		return nil, err
 	}
@@ -177,25 +203,25 @@ func DecodeDict(r *bufio.Reader) (map[string]BencodedElement, error) {
 	buf := map[string]BencodedElement{}
 
 	for {
-		hint, err := r.Peek(1)
+		hint, err := d.r.Peek(1)
 		if err != nil {
 			return nil, err
 		}
 
 		if hint[0] == 'e' {
-			_, err := r.ReadByte()
+			_, err := d.readByte()
 			if err != nil {
 				return nil, err
 			}
 			return buf, nil
 		}
 
-		key, err := DecodeString(r)
+		key, err := d.DecodeString()
 		if err != nil {
 			return nil, err
 		}
 
-		hint, err = r.Peek(1)
+		hint, err = d.r.Peek(1)
 		if err != nil {
 			return nil, err
 		}
@@ -204,25 +230,25 @@ func DecodeDict(r *bufio.Reader) (map[string]BencodedElement, error) {
 		case hint[0] == 'e':
 			return nil, errors.New("Invalid end character when looking for dict value")
 		case '0' <= hint[0] && hint[0] <= '9':
-			value, err := DecodeString(r)
+			value, err := d.DecodeString()
 			if err != nil {
 				return nil, err
 			}
 			buf[key] = value
 		case hint[0] == 'i':
-			value, err := DecodeInt(r)
+			value, err := d.DecodeInt()
 			if err != nil {
 				return nil, err
 			}
 			buf[key] = value
 		case hint[0] == 'l':
-			value, err := DecodeList(r)
+			value, err := d.DecodeList()
 			if err != nil {
 				return nil, err
 			}
 			buf[key] = value
 		case hint[0] == 'd':
-			value, err := DecodeDict(r)
+			value, err := d.DecodeDict()
 			if err != nil {
 				return nil, err
 			}
